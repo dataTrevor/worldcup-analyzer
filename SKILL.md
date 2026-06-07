@@ -1,7 +1,7 @@
 ---
 name: worldcup-analyzer
 description: Predict international football match outcomes between national teams, include 2026 World Cup kickoff/result context, answer in the user's language, and keep output as statistical reference only, never betting advice.
-version: 1.0.0
+version: 1.0.2
 metadata: {"openclaw":{"requires":{"env":["SOCCER_API_KEY"],"bins":["python3"]},"primaryEnv":"SOCCER_API_KEY","envVars":[{"name":"SOCCER_API_KEY","required":true,"description":"SoccerAssess API key used in the X-API-Key header."},{"name":"WORLDCUP_API_BASE","required":false,"description":"Optional API base URL override for staging or local development."}],"skillKey":"worldcup-analyzer"}}
 ---
 
