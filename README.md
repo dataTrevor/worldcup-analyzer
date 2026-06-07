@@ -33,25 +33,33 @@ worldcup-analyzer/
 ## Quick start
 
 ```bash
-export SOCCER_API_KEY="your_key_here"
+export SOCCER_API_KEY="your_key_here"   # optional permanent key
 export WORLDCUP_API_BASE="https://www.jiajielitong.com"   # optional; this is the default
 pip install -r requirements.txt
 python3 evals/run_evals.py
 ```
 
+No permanent key? Agent Skill users can still try the prediction endpoint:
+the client automatically requests a 24-hour Agent temporary key from
+`POST /matches/agent/temp-key`. Each source IP can request one temp key per
+UTC day, with 2 free prediction credits. Repeating the exact same home/away
+fixture within 3 days does not consume additional credits. When the temp-key
+limit is reached, register a permanent API key at `https://www.jiajielitong.com`.
+
 ## What the client gives you
 
 | Function | Purpose |
 |---|---|
-| `predict_match(home, away, competition="worldcup")` | Outcome + expected goal diff. 6h in-memory TTL cache. |
+| `request_agent_temp_key()` | Requests a 24-hour Agent temporary key with 2 free prediction credits per day; cached in process only. |
+| `predict_match(home, away, competition="worldcup")` | Outcome + expected goal diff. Uses `SOCCER_API_KEY` when set, otherwise an Agent temporary key. 6h in-memory TTL cache. |
 | `list_teams(competition="worldcup")` | Canonical team list from `GET /matches/teams/`. 12h TTL cache. |
 | `validate_team(name, competition)` | `(True, canonical)` or `(False, fuzzy_suggestion)`. Cheap — uses cached team list. |
 | `format_prediction(data)` | Margin-aware renderer with mandatory compliance disclaimer. Flags near-draws when `|win_goals| < 0.20`. |
 | `format_response(body)` | Appends disclaimer to any custom string. |
 | `format_prediction(data, language="zh")` | Optional Chinese rendering for Chinese user prompts. |
 | `format_response(body, language="zh")` | Optional Chinese disclaimer. |
-| `first_use_message(language="zh")` | First-use / missing-key onboarding text that guides users to apply for an API key and includes the model-data summary. |
-| `quota_warning(data, language="zh")` | Returns a short heads-up at ≥ 80% quota; points quota-exhausted users to `https://www.jiajielitong.com`; `None` on unlimited (`limit == -1`) tier. |
+| `first_use_message(language="zh")` | First-use onboarding text that explains the 2-per-day free temp key, repeat-query credits behavior, and model-data summary. |
+| `quota_warning(data, language="zh")` | Returns a short heads-up at ≥ 80% quota; points temp-key/plan-exhausted users to `https://www.jiajielitong.com` for a permanent key; `None` on unlimited (`limit == -1`) tier. |
 | `canonicalize_team_name(name)` | Alias map only (no API call). |
 | `cache_clear()` | Reset both predict + teams caches. |
 

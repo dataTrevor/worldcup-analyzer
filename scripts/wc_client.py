@@ -4,7 +4,8 @@ Thin wrapper around the prediction service at WORLDCUP_API_BASE
 (default: https://www.jiajielitong.com).
 
 Features:
-  - X-API-Key auth (from env var SOCCER_API_KEY)
+  - X-API-Key auth (from env var SOCCER_API_KEY, or an auto-requested
+    24-hour Agent temporary key)
   - Configurable base URL (WORLDCUP_API_BASE)
   - In-memory TTL cache (resets on process restart — intentional)
   - Friendly error mapping
@@ -36,8 +37,12 @@ DEFAULT_TIMEOUT = 15.0
 DISCLAIMER = "_Statistical reference only. Not betting advice. 18+._"
 DISCLAIMER_ZH = "_仅供统计参考，不构成投注建议。18+。_"
 ACCOUNT_URL = "https://www.jiajielitong.com"
+AGENT_TEMP_KEY_PATH = "/matches/agent/temp-key"
+TEMP_KEY_CACHE_KEY = "agent_temp_key"
+TEMP_KEY_SAFETY_MARGIN = 60
 FIRST_USE_MODEL_NOTE_EN = (
-    "First time using this skill? The backend model combines multiple data "
+    "First time using this skill? You can try 2 predictions per day for free "
+    "with an Agent temporary key. The backend model combines multiple data "
     "dimensions to build a scientific team-strength assessment model and is "
     "continuously retrained. Typical inputs include club performance, national "
     "team rankings, historical head-to-head records, weather factors, player "
@@ -45,7 +50,8 @@ FIRST_USE_MODEL_NOTE_EN = (
     "planned for a future release."
 )
 FIRST_USE_MODEL_NOTE_ZH = (
-    "首次使用本 Skill？后台模型收集多个维度数据，建立科学的球队实力评估模型，"
+    "首次使用本 Skill？Agent 临时 key 每日可免费试用 2 次预测。"
+    "后台模型收集多个维度数据，建立科学的球队实力评估模型，"
     "并持续训练。典型数据包括球员在俱乐部的表现、国家队排名、国家队历史交锋记录、"
     "天气因素、球员身价等。后续也会推出英格兰超级联赛的评估。"
 )
@@ -70,14 +76,11 @@ class WorldCupAPIError(Exception):
 
 def _api_key() -> str:
     key = os.environ.get("SOCCER_API_KEY")
-    if not key:
-        raise WorldCupAPIError(
-            "Missing API key. Log in at "
-            f"{ACCOUNT_URL} to apply for an API key; once it is set, you can get prediction results. Export it with:\n"
-            '    export SOCCER_API_KEY="your_key_here"\n\n'
-            f"{FIRST_USE_MODEL_NOTE_EN}"
-        )
-    return key
+    return key or request_agent_temp_key()["api_key"]
+
+
+def _permanent_api_key_configured() -> bool:
+    return bool(os.environ.get("SOCCER_API_KEY"))
 
 
 def _base_url() -> str:
@@ -109,6 +112,46 @@ def cache_clear() -> None:
     _cache.clear()
 
 
+def request_agent_temp_key(force: bool = False) -> dict:
+    """Request or reuse a 24-hour Agent temporary API key.
+
+    The API grants 2 free prediction credits per UTC day for Agent Skill
+    usage. The returned key is cached only in this Python process and is
+    never persisted to disk.
+    """
+    cached = None if force else _cache_get(TEMP_KEY_CACHE_KEY, 24 * 3600)
+    if isinstance(cached, dict) and cached.get("api_key"):
+        return cached
+
+    data = _request("POST", AGENT_TEMP_KEY_PATH, require_auth=False)
+    payload = data.get("data") if isinstance(data.get("data"), dict) else data
+    if not isinstance(payload, dict):
+        raise WorldCupAPIError(f"Malformed temp-key response: {data!r}")
+
+    api_key = (
+        payload.get("api_key")
+        or payload.get("key")
+        or payload.get("temp_key")
+        or payload.get("token")
+    )
+    if not isinstance(api_key, str) or not api_key:
+        raise WorldCupAPIError(f"Malformed temp-key response (no api_key): {data!r}")
+
+    expires_in = payload.get("expires_in", 24 * 3600)
+    if not isinstance(expires_in, (int, float)) or expires_in <= 0:
+        expires_in = 24 * 3600
+    normalized = {
+        **payload,
+        "api_key": api_key,
+        "key_type": payload.get("key_type", "agent_temp"),
+    }
+    _cache_set(TEMP_KEY_CACHE_KEY, normalized)
+    # Store a second timestamped value with a shorter TTL effect by forcing
+    # refresh manually once the safety-adjusted window has elapsed.
+    _cache[TEMP_KEY_CACHE_KEY] = (time.time() - max(0, 24 * 3600 - expires_in + TEMP_KEY_SAFETY_MARGIN), normalized)
+    return normalized
+
+
 def _team_name_from_api(value: Any) -> Any:
     """Return the English team name from API display labels.
 
@@ -123,17 +166,23 @@ def _team_name_from_api(value: Any) -> Any:
 
 # ----------- HTTP layer -----------
 
-def _request(method: str, path: str, payload: Optional[dict] = None) -> Any:
+def _request(
+    method: str,
+    path: str,
+    payload: Optional[dict] = None,
+    *,
+    require_auth: bool = True,
+    api_key: Optional[str] = None,
+) -> Any:
     """Issue an HTTP request and map errors to WorldCupAPIError.
 
     Shared by GET (list_teams) and POST (predict_match). The application
     response envelope is identical across both endpoints.
     """
     url = f"{_base_url()}{path}"
-    headers = {
-        "X-API-Key": _api_key(),
-        "Accept": "application/json",
-    }
+    headers = {"Accept": "application/json"}
+    if require_auth:
+        headers["X-API-Key"] = api_key or _api_key()
     if method == "POST":
         headers["Content-Type"] = "application/json"
 
@@ -185,8 +234,9 @@ def _request(method: str, path: str, payload: Optional[dict] = None) -> Any:
 
     # Application-level error envelope. The service has two flavors:
     #   (1) Success: payload-shape varies by endpoint. predict returns
-    #       `results`; list-teams returns `competition` + `teams`. We accept
-    #       any 2xx-equivalent envelope and let the caller validate shape.
+    #       `results`; list-teams returns `competition` + `teams`; temp-key
+    #       returns `data`. We accept any 2xx-equivalent envelope and let the
+    #       caller validate shape.
     #   (2) Failure: `code` is present and != 200, OR `error`/`message` is set.
     if not isinstance(data, dict):
         raise WorldCupAPIError(f"Unexpected response shape: {data!r}")
@@ -198,15 +248,15 @@ def _request(method: str, path: str, payload: Optional[dict] = None) -> Any:
         if code == 403:
             raise WorldCupAPIError(
                 f"Auth or quota error (code 403): {msg}. "
-                "Check your API key or upgrade your plan "
-                "if your prediction quota is exhausted."
+                f"If your free Agent temporary key limit is exhausted, "
+                f"log in at {ACCOUNT_URL} to register a permanent API key."
             )
         raise WorldCupAPIError(f"API returned code {code}: {msg}")
 
     # If the envelope carries an explicit error string with no success
     # payload, surface it. Endpoint-specific shape checks happen in the
     # public wrappers (predict_match / list_teams).
-    if "results" not in data and "teams" not in data and (
+    if "results" not in data and "teams" not in data and "data" not in data and (
         data.get("error") or data.get("message")
     ):
         raise WorldCupAPIError(data.get("error") or data.get("message"))
@@ -285,6 +335,8 @@ def predict_match(
         raise WorldCupAPIError(
             f"Malformed predict response (no 'results' field): {data!r}"
         )
+    if not _permanent_api_key_configured():
+        data.setdefault("agent_temp_key", {"daily_free_limit": 2})
     _cache_set(key, data)
     return data
 
@@ -440,12 +492,17 @@ def first_use_message(language: str = "en") -> str:
     """Return a first-use / missing-key onboarding message."""
     if _is_zh(language):
         return (
-            f"请先登录 {ACCOUNT_URL} 申请 API key；设置 `SOCCER_API_KEY` 后即可获得预测结果。\n\n"
+            "未设置永久 API key 时，本 Skill 会自动申请 Agent 临时 key；"
+            "每日可免费试用 2 次预测。同一组主客场参赛队在 3 天内重复查询不消耗 credits。"
+            f"临时 key 额度用完后，请登录 {ACCOUNT_URL} 注册获得永久 API key。\n\n"
             f"{FIRST_USE_MODEL_NOTE_ZH}"
         )
     return (
-        f"Please log in at {ACCOUNT_URL} to apply for an API key. Once "
-        "`SOCCER_API_KEY` is set, you can get prediction results.\n\n"
+        "If no permanent API key is set, this skill automatically requests "
+        "an Agent temporary key with 2 free predictions per day. Repeating "
+        "the same home/away fixture within 3 days does not consume credits. "
+        f"After the temporary-key limit is reached, log in at {ACCOUNT_URL} "
+        "to register a permanent API key.\n\n"
         f"{FIRST_USE_MODEL_NOTE_EN}"
     )
 
@@ -541,9 +598,14 @@ def format_prediction(data: dict, language: str = "en") -> str:
             and used >= limit
         ):
             if zh:
-                body += f"_用量已达上限，请登录 {ACCOUNT_URL} 注册或 renew API key。_\n"
+                body += f"_用量已达上限，请登录 {ACCOUNT_URL} 注册获得永久 API key。_\n"
             else:
-                body += f"_Quota limit reached. Log in at {ACCOUNT_URL} to register or renew an API key._\n"
+                body += f"_Quota limit reached. Log in at {ACCOUNT_URL} to register a permanent API key._\n"
+    if data.get("agent_temp_key") and not _permanent_api_key_configured():
+        if zh:
+            body += "_Agent 临时 key 每日可免费试用 2 次预测；同一组主客场参赛队 3 天内重复查询不消耗 credits。_\n"
+        else:
+            body += "_Agent temporary key: 2 free predictions per day; repeating the same home/away fixture within 3 days does not consume credits._\n"
     return format_response(body, language=language)
 
 
@@ -579,24 +641,24 @@ def quota_warning(data: dict, threshold: float = 0.8, language: str = "en") -> O
         if _is_zh(language):
             return (
                 f"提醒：你已用完 **{tier}** 计划的 {used}/{limit} 次预测。"
-                f"请登录 {ACCOUNT_URL} 注册或 renew API key。"
+                f"请登录 {ACCOUNT_URL} 注册获得永久 API key。"
             )
         return (
             f"Heads up: you've used all {used}/{limit} predictions on the "
-            f"**{tier}** plan. Log in at {ACCOUNT_URL} to register or renew "
-            "an API key."
+            f"**{tier}** plan. Log in at {ACCOUNT_URL} to register a "
+            "permanent API key."
         )
     if used / limit >= threshold:
         if _is_zh(language):
             return (
                 f"提醒：你已使用 **{tier}** 计划的 {used}/{limit} 次预测"
                 f"（{used / limit:.0%}）。接近上限时，请登录 {ACCOUNT_URL} "
-                "注册或 renew API key。"
+                "注册获得永久 API key。"
             )
         return (
             f"Heads up: you've used {used}/{limit} predictions on the "
             f"**{tier}** plan ({used / limit:.0%}). Log in at "
-            f"{ACCOUNT_URL} to register or renew an API key before you hit "
+            f"{ACCOUNT_URL} to register a permanent API key before you hit "
             "the cap."
         )
     return None

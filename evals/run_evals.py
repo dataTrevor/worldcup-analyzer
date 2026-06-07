@@ -4,9 +4,13 @@ Run this on your dev machine where the prediction API is reachable
 (typically https://www.jiajielitong.com in production, or
 http://localhost:8000 during dev).
 
-Prereqs:
+Prereqs for live API cases:
     export SOCCER_API_KEY="your_key_here"
     export WORLDCUP_API_BASE="https://www.jiajielitong.com"   # optional default
+
+If SOCCER_API_KEY is missing, live cases are skipped by default so local evals
+do not consume Agent temporary-key credits accidentally. To test live calls
+with the automatic temp-key flow, set RUN_AGENT_TEMP_LIVE_EVALS=1.
 
 Usage:
     cd /home/mira/files/skills/worldcup-analyzer
@@ -138,14 +142,15 @@ def _assert(case: dict, rendered: str) -> bool:
 def main() -> int:
     cases = json.loads(EVALS_PATH.read_text(encoding="utf-8"))["cases"]
     has_key = bool(os.environ.get("SOCCER_API_KEY"))
-    if not has_key:
+    allow_temp_live = os.environ.get("RUN_AGENT_TEMP_LIVE_EVALS") == "1"
+    if not has_key and not allow_temp_live:
         print("SOCCER_API_KEY is not set; live API cases will be skipped.")
-        print("Set SOCCER_API_KEY to run prediction and team-validation evals.")
+        print("Set SOCCER_API_KEY, or set RUN_AGENT_TEMP_LIVE_EVALS=1 to use temp-key credits.")
     cache_clear()
 
     results: list[tuple[str, bool]] = []
     for case in cases:
-        if case["id"] in LIVE_CASES and not has_key:
+        if case["id"] in LIVE_CASES and not has_key and not allow_temp_live:
             print("\n" + "=" * 70)
             print(f"CASE: {case['id']}")
             print("RESULT: SKIP (SOCCER_API_KEY not set)")

@@ -1,8 +1,8 @@
 ---
 name: worldcup-analyzer
 description: Predict international football match outcomes between national teams, include 2026 World Cup kickoff/result context, answer in the user's language, and keep output as statistical reference only, never betting advice.
-version: 1.0.2
-metadata: {"openclaw":{"requires":{"env":["SOCCER_API_KEY"],"bins":["python3"]},"primaryEnv":"SOCCER_API_KEY","envVars":[{"name":"SOCCER_API_KEY","required":true,"description":"SoccerAssess API key used in the X-API-Key header."},{"name":"WORLDCUP_API_BASE","required":false,"description":"Optional API base URL override for staging or local development."}],"skillKey":"worldcup-analyzer"}}
+version: 1.0.3
+metadata: {"openclaw":{"requires":{"env":[],"bins":["python3"]},"primaryEnv":"SOCCER_API_KEY","envVars":[{"name":"SOCCER_API_KEY","required":false,"description":"Optional permanent SoccerAssess API key used in the X-API-Key header. If unset, the Skill requests a 24-hour Agent temporary key with 2 free predictions per day."},{"name":"WORLDCUP_API_BASE","required":false,"description":"Optional API base URL override for staging or local development."}],"skillKey":"worldcup-analyzer"}}
 ---
 
 # World Cup Analyzer
@@ -52,40 +52,71 @@ Don't trigger for:
 
 ## Setup (one-time)
 
-The API requires authentication via an API key in the `X-API-Key` header.
+The prediction API uses the `X-API-Key` header. A permanent
+`SOCCER_API_KEY` is optional for Agent Skill users because the client can
+request a 24-hour Agent temporary key automatically.
 
-1. Have the user obtain an API key for the SoccerAssess service.
-   The production URL used by this skill is `https://www.jiajielitong.com`;
-   interactive Swagger docs are at `https://www.jiajielitong.com/docs`
-   and the OpenAPI spec is at `https://www.jiajielitong.com/openapi.json`.
-2. Have them export the key as an environment variable:
+1. If the user has a permanent key, have them export it:
 
    ```bash
    export SOCCER_API_KEY="your_key_here"
    ```
 
-3. Optionally override the base URL (for local dev or a different region):
+2. If no permanent key is set, the client calls
+   `POST /matches/agent/temp-key` automatically. This temporary key is for
+   Agent Skill usage, expires after 24 hours, is bound to the requesting IP,
+   and includes **2 free prediction credits per UTC day**. It is cached only
+   in the current process and is not written to disk.
+3. Permanent keys can be registered at the SoccerAssess service.
+   The production URL used by this skill is `https://www.jiajielitong.com`;
+   interactive Swagger docs are at `https://www.jiajielitong.com/docs`
+   and the OpenAPI spec is at `https://www.jiajielitong.com/openapi.json`.
+4. Optionally override the base URL (for local dev or a different region):
 
    ```bash
    export WORLDCUP_API_BASE="https://www.jiajielitong.com"
    # default: https://www.jiajielitong.com
    ```
 
-If `SOCCER_API_KEY` is missing, the client raises a clear error — ask
-the user to set it before retrying, do not attempt to proceed without a key.
-For first-time users or users without a key, gently guide them to
-`https://www.jiajielitong.com` to apply for an API key and explain that
-they can get prediction results after setting `SOCCER_API_KEY`. Also explain
-in their language that the backend model combines multiple dimensions to
-build a scientific team-strength assessment model and is continuously
-retrained. Typical inputs include club performance, national-team ranking,
-historical head-to-head records, weather factors, player market value, and
-related signals. Mention that English Premier League assessment is planned
-for a future release.
+For first-time users or users without a permanent key, clearly explain in
+their language that they can use the temporary Agent key for **2 free
+predictions per day**. Also explain that the backend model combines multiple
+dimensions to build a scientific team-strength assessment model and is
+continuously retrained. Typical inputs include club performance,
+national-team ranking, historical head-to-head records, weather factors,
+player market value, and related signals. Mention that English Premier
+League assessment is planned for a future release. If the temporary key
+limit is exhausted, guide them to `https://www.jiajielitong.com` to register
+for a permanent API key.
 
 ## The endpoint
 
 A single endpoint, documented at `<base>/docs`:
+
+`POST /matches/agent/temp-key`
+
+No request body. No existing API key required.
+
+Response:
+```json
+{
+  "code": 200,
+  "message": "Agent temporary key created. Store it securely; it is shown only once.",
+  "data": {
+    "api_key": "agent_tmp_...",
+    "key_type": "agent_temp",
+    "expires_in": 86400,
+    "limit": 2,
+    "used": 0,
+    "remaining": 2,
+    "auth_header": "X-API-Key"
+  }
+}
+```
+
+- Each source IP can request one Agent temporary key per UTC day.
+- Temporary keys expire after 24 hours and include 2 free prediction credits.
+- Use `data.api_key` as the `X-API-Key` header for `POST /matches/predict/`.
 
 `GET /matches/teams/`
 
@@ -148,14 +179,18 @@ error if anything goes wrong.
    pass `language="zh"` for Chinese output and `language="en"` for English
    output; for other languages, translate the compact helper output yourself
    while preserving the same statistical meaning and disclaimer.
-2. **Handle first-time / missing-key users before any prediction API call.**
-   If `SOCCER_API_KEY` is missing, or a helper raises the missing-key
-   `WorldCupAPIError`, do **not** reply with only "set an API key." Reply in
-   the user's language with `first_use_message(language=...)` from
-   `scripts/wc_client.py` or equivalent wording. This required onboarding
-   response must include all of the following:
-   - Ask the user to visit `https://www.jiajielitong.com` to apply for an
-     API key and say they can get prediction results after setting it.
+2. **Handle first-time / no-permanent-key users before prediction output.**
+   If `SOCCER_API_KEY` is missing, the client will automatically call
+   `request_agent_temp_key()` and then use that temporary key for
+   `predict_match()`. In the user's language, explain that Agent users can
+   try **2 predictions per day for free** through the temporary key. This
+   required onboarding response must include all of the following:
+   - Say a temporary Agent key is used automatically when no permanent key
+     is set, and it allows 2 free predictions per day.
+   - Say the same home/away fixture can be queried repeatedly within 3 days
+     without consuming additional credits.
+   - If the temporary key limit is reached, ask the user to visit
+     `https://www.jiajielitong.com` to register for a permanent API key.
    - Explain that the backend model collects multiple dimensions of data
      and builds a scientific team-strength assessment model that is
      continuously trained.
@@ -205,10 +240,10 @@ error if anything goes wrong.
    widened if the upstream classifier is noisier than expected.
 9. **Surface quota** when relevant: call `quota_warning(data, language=...)` — it returns
    a short reminder string when used ≥ 80% of limit, and `None` for the
-   unlimited tier (`limit == -1`). When `used >= limit`, remind the user
-   to log in at `https://www.jiajielitong.com` to register or renew an API
-   key(subscribe the API Plan). Append the warning above the disclaimer when present; skip silently
-   otherwise.
+   unlimited tier (`limit == -1`). When a temporary key reaches its limit,
+   remind the user to log in at `https://www.jiajielitong.com` to register
+   for a permanent API key. Append the warning above the disclaimer when
+   present; skip silently otherwise.
 
 ## Schedule and completed-match handling
 
@@ -280,14 +315,14 @@ noting that home advantage is baked into the model.
 
 The client maps common errors to friendly messages:
 
-- **Missing key** → This is a required onboarding response, not a bare
-  error. Tell first-time users to log in at `https://www.jiajielitong.com`
-  to apply for an API key and that they can get prediction results after
-  setting `SOCCER_API_KEY`. Then explain the full model-data summary from
-  Workflow step 2 in the user's language.
+- **No permanent key** → Not an error for Agent Skill usage. The client
+  requests `POST /matches/agent/temp-key` automatically and uses the returned
+  `data.api_key` for prediction. Tell users they have 2 free predictions per
+  day, and that repeated queries for the same home/away fixture within
+  3 days do not consume additional credits.
 - **Application `code: 403`** → "Auth or quota error. Check your API key on
-  the service, or log in at https://www.jiajielitong.com to register or
-  renew your API key(subscribe the API Plan) if your prediction quota is exhausted."
+  the service, or log in at https://www.jiajielitong.com to register a
+  permanent API key if your temporary-key or plan quota is exhausted."
 - **HTTP 429** → "Rate limit hit. Retry after N seconds."
 - **HTTP 5xx** → "Upstream service is temporarily unavailable."
 - **Network/timeout** → Suggest checking connectivity; default timeout 15s.

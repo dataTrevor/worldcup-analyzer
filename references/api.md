@@ -5,9 +5,53 @@ Base URL (local dev): `http://localhost:8000`
 Interactive OpenAPI docs: `<base>/docs`
 OpenAPI JSON: `<base>/openapi.json`
 Auth: `X-API-Key: <your_key>` (every request)
+Agent Skill users can omit `SOCCER_API_KEY`; the client requests a temporary
+key from `POST /matches/agent/temp-key` and uses it as `X-API-Key`.
 
 The default production hostname is `https://www.jiajielitong.com`.
 Override via `WORLDCUP_API_BASE` env var for local dev or staging.
+
+## `POST /matches/agent/temp-key`
+
+Request a 24-hour Agent temporary API key. No request body and no existing
+API key required.
+
+### Response
+
+```json
+{
+  "code": 200,
+  "message": "Agent temporary key created. Store it securely; it is shown only once.",
+  "data": {
+    "api_key": "agent_tmp_...",
+    "key_type": "agent_temp",
+    "expires_in": 86400,
+    "limit": 2,
+    "used": 0,
+    "remaining": 2,
+    "auth_header": "X-API-Key"
+  }
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `data.api_key` | Temporary key to send as `X-API-Key` for `/matches/predict/`. |
+| `data.expires_in` | Seconds until expiry; currently 86400. |
+| `data.limit` | Free prediction credits for the temporary key; currently 2. |
+| `data.remaining` | Remaining temporary-key prediction credits. |
+
+Rules:
+- Each source IP can request one Agent temporary key per UTC day.
+- The temporary key expires after 24 hours and is bound to the requesting IP.
+- When the temporary-key limit is reached, tell users to register a permanent
+  API key at `https://www.jiajielitong.com`.
+
+### Curl example
+
+```bash
+curl -X POST 'https://www.jiajielitong.com/matches/agent/temp-key'
+```
 
 ## `GET /matches/teams/`
 
@@ -109,7 +153,7 @@ home/away fixture is queried repeatedly within 3 days. Swapping `home_team`
 and `visitor_team` is treated as a different fixture.
 
 When `usage.used >= usage.limit` for a finite limit, tell users to log in at
-`https://www.jiajielitong.com` to register or renew an API key.
+`https://www.jiajielitong.com` to register a permanent API key.
 
 ### Curl example
 
@@ -128,8 +172,9 @@ curl -X POST 'https://www.jiajielitong.com/matches/predict/' \
 
 The API may return:
 
-- HTTP `200` with `code: 403` — auth failure (bad/missing key) **or** quota
-  exhausted. The error message in `message` / `error` distinguishes them.
+- HTTP `200` with `code: 403` — auth failure (invalid key, IP mismatch for
+  an Agent temporary key) **or** quota exhausted. The error message in
+  `message` / `error` distinguishes them.
 - HTTP `429` — rate limit; honor `Retry-After`.
 - HTTP `5xx` — upstream issue; retry with backoff.
 - HTTP `404` — wrong path; verify `WORLDCUP_API_BASE`.

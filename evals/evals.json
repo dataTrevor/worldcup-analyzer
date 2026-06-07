@@ -67,12 +67,15 @@
       "id": "first_use_missing_key_zh",
       "prompt": "第一次用，巴西对摩洛哥怎么预测？",
       "expected_behavior": [
-        "When the user is first-time or has no API key, explain how to apply for an API key and that setting it enables prediction results.",
+        "When the user is first-time or has no permanent API key, explain the Agent temporary key free trial.",
+        "Say users can try 2 predictions per day for free.",
+        "Say repeated queries for the same home/away fixture within 3 days do not consume credits.",
+        "Tell users to register a permanent API key after the temp-key limit is reached.",
         "Include the backend model explanation: multi-dimensional data, scientific team-strength assessment, continuous training.",
         "Name typical inputs: club performance, national-team ranking, historical head-to-head records, weather factors, player market value.",
         "Mention future English Premier League assessment."
       ],
-      "must_include": ["https://www.jiajielitong.com", "申请 API key", "即可获得预测结果", "多个维度数据", "科学的球队实力评估模型", "持续训练", "俱乐部", "国家队排名", "历史交锋", "天气", "球员身价", "英格兰超级联赛"],
+      "must_include": ["https://www.jiajielitong.com", "临时 key", "每日可免费试用 2 次", "3 天内重复查询不消耗 credits", "永久 API key", "多个维度数据", "科学的球队实力评估模型", "持续训练", "俱乐部", "国家队排名", "历史交锋", "天气", "球员身价", "英格兰超级联赛"],
       "must_not_include": ["推荐", "必中", "稳赢", "stake", "odds"]
     }
   ]
