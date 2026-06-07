@@ -207,7 +207,7 @@ error if anything goes wrong.
    a short reminder string when used ≥ 80% of limit, and `None` for the
    unlimited tier (`limit == -1`). When `used >= limit`, remind the user
    to log in at `https://www.jiajielitong.com` to register or renew an API
-   key. Append the warning above the disclaimer when present; skip silently
+   key(subscribe the API Plan). Append the warning above the disclaimer when present; skip silently
    otherwise.
 
 ## Schedule and completed-match handling
@@ -287,7 +287,7 @@ The client maps common errors to friendly messages:
   Workflow step 2 in the user's language.
 - **Application `code: 403`** → "Auth or quota error. Check your API key on
   the service, or log in at https://www.jiajielitong.com to register or
-  renew your API key if your prediction quota is exhausted."
+  renew your API key(subscribe the API Plan) if your prediction quota is exhausted."
 - **HTTP 429** → "Rate limit hit. Retry after N seconds."
 - **HTTP 5xx** → "Upstream service is temporarily unavailable."
 - **Network/timeout** → Suggest checking connectivity; default timeout 15s.
