@@ -1,5 +1,9 @@
 # worldcup-analyzer
 
+[![ClawHub](https://img.shields.io/badge/ClawHub-worldcup--analyzer-blue)](https://clawhub.ai/datatrevor/worldcup-analyzer)
+![Python](https://img.shields.io/badge/Python-3.10%2B-green)
+![License](https://img.shields.io/badge/license-MIT--0-lightgrey)
+
 Mira/Claude-Code Skill for predicting outcomes of national-team football
 matches using a remote machine learning API at
 `https://www.jiajielitong.com`. Defaults to the 2026 FIFA World Cup;
@@ -12,15 +16,17 @@ analysis only — **not** betting advice.
 worldcup-analyzer/
 ├── SKILL.md                  # Skill manifest + agent instructions
 ├── README.md                 # This file (human-facing)
+├── skill-card.md             # ClawHub marketplace card
 ├── requirements.txt          # Python deps (httpx preferred, requests fallback)
 ├── scripts/
 │   └── wc_client.py          # HTTP client, cache, formatter, validator
 ├── references/
 │   ├── api.md                # Endpoint reference (/teams/, /predict/)
 │   ├── team_names.md         # Canonical 48-team list + alias map
-│   └── compliance.md         # HK Cap. 148 refusal templates and rules
+│   ├── compliance.md         # HK Cap. 148 refusal templates and rules
+│   └── schedule.md           # World Cup schedule/result lookup behavior
 └── evals/
-    ├── evals.json            # 4 eval cases
+    ├── evals.json            # Eval cases
     └── run_evals.py          # Local runner — hits the live API
 ```
 
@@ -52,6 +58,48 @@ python3 evals/run_evals.py
 Note: the provider does not count additional credits when the exact same
 fixture is queried again with the same home/away order within 3 days.
 Reversing home and away is a different fixture.
+
+## Demo
+
+ClawHub page: `https://clawhub.ai/datatrevor/worldcup-analyzer`
+
+Chinese prompt:
+
+```text
+用户：巴西主场对摩洛哥，世界杯谁更有可能赢？
+```
+
+Example output:
+
+```text
+**Brazil vs Morocco**（模型预测）
+
+- 从 Brazil 视角看的赛果：Win
+- 预期净胜球（主队 - 客队）：+0.57
+- 解读：模型偏向主场的 Brazil
+- 赛程：若赛程页已公布，将附上开赛时间；若比赛已结束，将附上最终赛果
+
+仅供统计参考，不构成投注建议。18+。
+```
+
+English prompt:
+
+```text
+User: Predict Brazil vs Morocco in the World Cup.
+```
+
+Example output:
+
+```text
+**Brazil vs Morocco** (modeled projection)
+
+- Outcome from Brazil's POV: Win
+- Expected goal difference (home - away): +0.57
+- Interpretation: model favors Brazil at home
+- Schedule: kickoff time is included when available; final result is shown for completed fixtures
+
+Statistical reference only. Not betting advice. 18+.
+```
 
 ## Compliance hard constraints
 
