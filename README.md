@@ -1,7 +1,7 @@
 # worldcup-analyzer
 
 Mira/Claude-Code Skill for predicting outcomes of national-team football
-matches using a remote regression-model API at
+matches using a remote machine learning API at
 `https://www.jiajielitong.com`. Defaults to the 2026 FIFA World Cup;
 `england-premium` is reserved for upcoming API support. Statistical
 analysis only — **not** betting advice.
@@ -40,16 +40,34 @@ python3 evals/run_evals.py
 | `predict_match(home, away, competition="worldcup")` | Outcome + expected goal diff. 6h in-memory TTL cache. |
 | `list_teams(competition="worldcup")` | Canonical team list from `GET /matches/teams/`. 12h TTL cache. |
 | `validate_team(name, competition)` | `(True, canonical)` or `(False, fuzzy_suggestion)`. Cheap — uses cached team list. |
-| `format_prediction(data)` | Margin-aware renderer with mandatory compliance disclaimer. Flags near-draws when `|win_goals| < 0.10`. |
+| `format_prediction(data)` | Margin-aware renderer with mandatory compliance disclaimer. Flags near-draws when `|win_goals| < 0.20`. |
 | `format_response(body)` | Appends disclaimer to any custom string. |
-| `quota_warning(data)` | Returns a short heads-up at ≥ 80% quota; `None` on unlimited (`limit == -1`) tier. |
+| `format_prediction(data, language="zh")` | Optional Chinese rendering for Chinese user prompts. |
+| `format_response(body, language="zh")` | Optional Chinese disclaimer. |
+| `first_use_message(language="zh")` | First-use / missing-key onboarding text that guides users to apply for an API key and includes the model-data summary. |
+| `quota_warning(data, language="zh")` | Returns a short heads-up at ≥ 80% quota; points quota-exhausted users to `https://www.jiajielitong.com`; `None` on unlimited (`limit == -1`) tier. |
 | `canonicalize_team_name(name)` | Alias map only (no API call). |
 | `cache_clear()` | Reset both predict + teams caches. |
+
+Note: the provider does not count additional credits when the exact same
+fixture is queried again with the same home/away order within 3 days.
+Reversing home and away is a different fixture.
 
 ## Compliance hard constraints
 
 - No phrases like `recommended bet`, `sure win`, `lock`, `tips`, `稳赢`, `推荐`.
 - Disclaimer is automatic and must not be stripped.
 - Refuse betting picks, stake sizing, bookmaker odds, anyone identifying as under 18.
+
+## Schedule/result behavior
+
+After a World Cup prediction, check
+`https://en.wikipedia.org/wiki/2026_FIFA_World_Cup` for the fixture. If the
+page is unavailable or does not show the fixture, fall back to
+`https://baike.baidu.com/en/item/2026%20FIFA%20World%20Cup/1497370#9`.
+If the match is upcoming, include kickoff time. If it has finished, include
+the final result; when the model's win/draw/loss differs from the actual
+result, thank the user and say the result has been used to retrain the
+backend model.
 
 See `references/compliance.md` for full text + refusal templates.

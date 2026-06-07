@@ -44,6 +44,7 @@ from wc_client import (  # noqa: E402
     WorldCupAPIError,
     cache_clear,
     canonicalize_team_name,
+    first_use_message,
     format_prediction,
     format_response,
     predict_match,
@@ -62,6 +63,12 @@ REFUSAL_TEMPLATE_EN = (
     "you'd like compared, and you can interpret the numbers however you "
     "like."
 )
+
+LIVE_CASES = {
+    "predict_basic_worldcup",
+    "predict_alias_reverse_fixture",
+    "validate_team_typo_suggestion",
+}
 
 
 def run_case(case: dict) -> tuple[bool, str]:
@@ -89,6 +96,24 @@ def run_case(case: dict) -> tuple[bool, str]:
         rendered = format_prediction(data)
         return _assert(case, rendered), rendered
 
+    if case_id == "format_chinese_quota_limit":
+        data = {
+            "results": {
+                "home_team": "Brazil",
+                "visitor_team": "Morocco",
+                "win_goals": 0.57,
+                "win_or_not": "Win",
+                "updatedAt": "2026-06-07 05:01:07.298412",
+            },
+            "usage": {"used": 4, "limit": 4, "vip_level": "plus"},
+        }
+        rendered = format_prediction(data, language="zh")
+        return _assert(case, rendered), rendered
+
+    if case_id == "first_use_missing_key_zh":
+        rendered = first_use_message("zh")
+        return _assert(case, rendered), rendered
+
     raise ValueError(f"Unknown case id: {case_id}")
 
 
@@ -111,16 +136,20 @@ def _assert(case: dict, rendered: str) -> bool:
 
 
 def main() -> int:
-    if not os.environ.get("SOCCER_API_KEY"):
-        print("ERROR: SOCCER_API_KEY is not set in the environment.")
-        print("       export SOCCER_API_KEY=\"your_key_here\" first.")
-        return 1
-
     cases = json.loads(EVALS_PATH.read_text(encoding="utf-8"))["cases"]
+    has_key = bool(os.environ.get("SOCCER_API_KEY"))
+    if not has_key:
+        print("SOCCER_API_KEY is not set; live API cases will be skipped.")
+        print("Set SOCCER_API_KEY to run prediction and team-validation evals.")
     cache_clear()
 
     results: list[tuple[str, bool]] = []
     for case in cases:
+        if case["id"] in LIVE_CASES and not has_key:
+            print("\n" + "=" * 70)
+            print(f"CASE: {case['id']}")
+            print("RESULT: SKIP (SOCCER_API_KEY not set)")
+            continue
         print("\n" + "=" * 70)
         print(f"CASE: {case['id']}")
         print(f"PROMPT: {case['prompt']}")

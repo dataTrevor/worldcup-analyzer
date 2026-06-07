@@ -34,6 +34,21 @@ DEFAULT_BASE_URL = "https://www.jiajielitong.com"
 DEFAULT_TIMEOUT = 15.0
 
 DISCLAIMER = "_Statistical reference only. Not betting advice. 18+._"
+DISCLAIMER_ZH = "_仅供统计参考，不构成投注建议。18+。_"
+ACCOUNT_URL = "https://www.jiajielitong.com"
+FIRST_USE_MODEL_NOTE_EN = (
+    "First time using this skill? The backend model combines multiple data "
+    "dimensions to build a scientific team-strength assessment model and is "
+    "continuously retrained. Typical inputs include club performance, national "
+    "team rankings, historical head-to-head records, weather factors, player "
+    "market value, and related signals. English Premier League assessment is "
+    "planned for a future release."
+)
+FIRST_USE_MODEL_NOTE_ZH = (
+    "首次使用本 Skill？后台模型收集多个维度数据，建立科学的球队实力评估模型，"
+    "并持续训练。典型数据包括球员在俱乐部的表现、国家队排名、国家队历史交锋记录、"
+    "天气因素、球员身价等。后续也会推出英格兰超级联赛的评估。"
+)
 SUPPORTED_COMPETITIONS = ("worldcup", "england-premium")
 
 # Cache TTL in seconds. Predictions are deterministic for given inputs over
@@ -46,7 +61,7 @@ PREDICT_TTL = 6 * 3600
 # (e.g. win_goals = -0.02 labelled "Loss"); when that happens, the
 # formatter surfaces it as a near-draw rather than parroting the label.
 # Adjust upward if you want a wider "uncertain" band.
-NEAR_DRAW_THRESHOLD = 0.10
+NEAR_DRAW_THRESHOLD = 0.20
 
 
 class WorldCupAPIError(Exception):
@@ -57,9 +72,10 @@ def _api_key() -> str:
     key = os.environ.get("SOCCER_API_KEY")
     if not key:
         raise WorldCupAPIError(
-            "Missing API key. Obtain an API key for "
-            f"{_base_url()}, then export it:\n"
-            '    export SOCCER_API_KEY="your_key_here"'
+            "Missing API key. Log in at "
+            f"{ACCOUNT_URL} to apply for an API key; once it is set, you can get prediction results. Export it with:\n"
+            '    export SOCCER_API_KEY="your_key_here"\n\n'
+            f"{FIRST_USE_MODEL_NOTE_EN}"
         )
     return key
 
@@ -91,6 +107,18 @@ def _cache_set(key: str, value: Any) -> None:
 def cache_clear() -> None:
     """Manually clear the in-memory cache (useful between tests)."""
     _cache.clear()
+
+
+def _team_name_from_api(value: Any) -> Any:
+    """Return the English team name from API display labels.
+
+    Production currently returns values like "Brazil - 巴西" from
+    /matches/teams/. The predict endpoint still accepts "Brazil", so keep
+    validation aligned with prediction inputs.
+    """
+    if isinstance(value, str) and " - " in value:
+        return value.split(" - ", 1)[0].strip()
+    return value
 
 
 # ----------- HTTP layer -----------
@@ -295,17 +323,21 @@ def list_teams(competition: str = "worldcup") -> list[str]:
 
     data = _request("GET", "/matches/teams/", payload={"competition": competition})
 
-    # Tolerate both flat (`teams: [...]`) and nested (`results.teams: [...]`)
-    # response shapes — the openapi docs describe the former but production
-    # services often wrap things later. Pick whichever is present.
+    # Tolerate flat (`teams: [...]`) and nested (`results.teams` /
+    # `data.teams`) response shapes. Production may also return bilingual
+    # display labels like "Brazil - 巴西"; normalize those to the English
+    # names accepted by the predict endpoint.
     teams = data.get("teams")
     if teams is None and isinstance(data.get("results"), dict):
         teams = data["results"].get("teams")
+    if teams is None and isinstance(data.get("data"), dict):
+        teams = data["data"].get("teams")
     if not isinstance(teams, list):
         raise WorldCupAPIError(
             f"Malformed teams response (no 'teams' list): {data!r}"
         )
 
+    teams = [_team_name_from_api(team) for team in teams]
     _cache_set(key, teams)
     return teams
 
@@ -396,7 +428,29 @@ def canonicalize_team_name(name: str) -> str:
 
 # ----------- response formatting -----------
 
-def format_prediction(data: dict) -> str:
+def _is_zh(language: str) -> bool:
+    return language.lower().startswith(("zh", "cn"))
+
+
+def _disclaimer_for(language: str) -> str:
+    return DISCLAIMER_ZH if _is_zh(language) else DISCLAIMER
+
+
+def first_use_message(language: str = "en") -> str:
+    """Return a first-use / missing-key onboarding message."""
+    if _is_zh(language):
+        return (
+            f"请先登录 {ACCOUNT_URL} 申请 API key；设置 `SOCCER_API_KEY` 后即可获得预测结果。\n\n"
+            f"{FIRST_USE_MODEL_NOTE_ZH}"
+        )
+    return (
+        f"Please log in at {ACCOUNT_URL} to apply for an API key. Once "
+        "`SOCCER_API_KEY` is set, you can get prediction results.\n\n"
+        f"{FIRST_USE_MODEL_NOTE_EN}"
+    )
+
+
+def format_prediction(data: dict, language: str = "en") -> str:
     """Render a prediction response into a compact, compliant message.
 
     The disclaimer is always appended. Do not strip it.
@@ -428,30 +482,47 @@ def format_prediction(data: dict) -> str:
         and abs(win_goals_num) < NEAR_DRAW_THRESHOLD
     )
 
+    zh = _is_zh(language)
+
     if near_draw and outcome in ("Win", "Loss"):
         leaning = home if win_goals_num > 0 else away
-        verdict = (
-            f"model projects a **near-draw** "
-            f"(|diff| < {NEAR_DRAW_THRESHOLD:.2f}); "
-            f"marginal lean toward **{leaning}** — treat as essentially level"
-        )
+        if zh:
+            verdict = (
+                f"模型认为这场接近**平局**（|净胜球| < {NEAR_DRAW_THRESHOLD:.2f}）；"
+                f"仅略微偏向 **{leaning}**，可视为基本均势"
+            )
+        else:
+            verdict = (
+                f"model projects a **near-draw** "
+                f"(|diff| < {NEAR_DRAW_THRESHOLD:.2f}); "
+                f"marginal lean toward **{leaning}** - treat as essentially level"
+            )
     elif outcome == "Win":
-        verdict = f"model favors **{home}** at home"
+        verdict = f"模型偏向主场的 **{home}**" if zh else f"model favors **{home}** at home"
     elif outcome == "Loss":
-        verdict = f"model favors **{away}** (away)"
+        verdict = f"模型偏向客场的 **{away}**" if zh else f"model favors **{away}** (away)"
     elif outcome == "Draw":
-        verdict = "model projects a draw"
+        verdict = "模型预测为平局" if zh else "model projects a draw"
     else:
-        verdict = f"model verdict: {outcome}"
+        verdict = f"模型结果：{outcome}" if zh else f"model verdict: {outcome}"
 
-    body = (
-        f"**{home} vs {away}** (modeled projection)\n\n"
-        f"- Outcome from {home}'s POV: **{outcome}**\n"
-        f"- Expected goal difference (home − away): **{win_goals}**\n"
-        f"- Interpretation: {verdict}\n"
-    )
+    if zh:
+        body = (
+            f"**{home} vs {away}**（模型预测）\n\n"
+            f"- 从 {home} 视角看的赛果：**{outcome}**\n"
+            f"- 预期净胜球（主队 - 客队）：**{win_goals}**\n"
+            f"- 解读：{verdict}\n"
+        )
+    else:
+        body = (
+            f"**{home} vs {away}** (modeled projection)\n\n"
+            f"- Outcome from {home}'s POV: **{outcome}**\n"
+            f"- Expected goal difference (home - away): **{win_goals}**\n"
+            f"- Interpretation: {verdict}\n"
+        )
     if updated_at:
-        body += f"- Model snapshot: {updated_at}\n"
+        label = "模型快照" if zh else "Model snapshot"
+        body += f"- {label}: {updated_at}\n"
 
     if usage:
         used = usage.get("used", "?")
@@ -459,13 +530,24 @@ def format_prediction(data: dict) -> str:
         tier = usage.get("vip_level", "?")
         # `limit: -1` means unlimited (e.g. deluxe_vip tier).
         limit_display = "∞" if limit == -1 else str(limit)
-        body += (
-            f"\n_Quota: {used}/{limit_display} used on the **{tier}** plan._\n"
-        )
-    return format_response(body)
+        if zh:
+            body += f"\n_用量：**{tier}** 计划已使用 {used}/{limit_display}。_\n"
+        else:
+            body += f"\n_Quota: {used}/{limit_display} used on the **{tier}** plan._\n"
+        if (
+            isinstance(used, (int, float))
+            and isinstance(limit, (int, float))
+            and limit > 0
+            and used >= limit
+        ):
+            if zh:
+                body += f"_用量已达上限，请登录 {ACCOUNT_URL} 注册或 renew API key。_\n"
+            else:
+                body += f"_Quota limit reached. Log in at {ACCOUNT_URL} to register or renew an API key._\n"
+    return format_response(body, language=language)
 
 
-def format_response(body: str) -> str:
+def format_response(body: str, language: str = "en") -> str:
     """Append the mandatory compliance disclaimer.
 
     Always use this before showing any analytics to the user. The disclaimer
@@ -473,12 +555,13 @@ def format_response(body: str) -> str:
     if the user asks.
     """
     body = body.rstrip()
-    if DISCLAIMER in body:
+    disclaimer = _disclaimer_for(language)
+    if DISCLAIMER in body or DISCLAIMER_ZH in body:
         return body
-    return f"{body}\n\n{DISCLAIMER}"
+    return f"{body}\n\n{disclaimer}"
 
 
-def quota_warning(data: dict, threshold: float = 0.8) -> Optional[str]:
+def quota_warning(data: dict, threshold: float = 0.8, language: str = "en") -> Optional[str]:
     """Return a short warning string when the caller is near plan limit.
 
     `usage.limit == -1` is the unlimited sentinel (e.g. deluxe_vip tier);
@@ -492,11 +575,29 @@ def quota_warning(data: dict, threshold: float = 0.8) -> Optional[str]:
         return None
     if limit == -1 or limit == 0:
         return None  # unlimited or unknown — no warning
+    if used >= limit:
+        if _is_zh(language):
+            return (
+                f"提醒：你已用完 **{tier}** 计划的 {used}/{limit} 次预测。"
+                f"请登录 {ACCOUNT_URL} 注册或 renew API key。"
+            )
+        return (
+            f"Heads up: you've used all {used}/{limit} predictions on the "
+            f"**{tier}** plan. Log in at {ACCOUNT_URL} to register or renew "
+            "an API key."
+        )
     if used / limit >= threshold:
+        if _is_zh(language):
+            return (
+                f"提醒：你已使用 **{tier}** 计划的 {used}/{limit} 次预测"
+                f"（{used / limit:.0%}）。接近上限时，请登录 {ACCOUNT_URL} "
+                "注册或 renew API key。"
+            )
         return (
             f"Heads up: you've used {used}/{limit} predictions on the "
-            f"**{tier}** plan ({used / limit:.0%}). Consider upgrading "
-            "before you hit the cap."
+            f"**{tier}** plan ({used / limit:.0%}). Log in at "
+            f"{ACCOUNT_URL} to register or renew an API key before you hit "
+            "the cap."
         )
     return None
 

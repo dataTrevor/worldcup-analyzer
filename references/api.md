@@ -25,10 +25,19 @@ so typos don't burn prediction quota.
 
 ```json
 {
-  "competition": "worldcup",
-  "teams": [
-    "Algeria", "Argentina", "Australia", "...", "Uzbekistan"
-  ]
+  "code": 200,
+  "data": {
+    "competition": "worldcup",
+    "name": "FIFA World Cup 2026",
+    "teams": [
+      "Algeria - 阿爾及利亞",
+      "Argentina - 阿根廷",
+      "Brazil - 巴西",
+      "...",
+      "Uzbekistan - 烏茲別克"
+    ],
+    "count": 51
+  }
 }
 ```
 
@@ -36,6 +45,8 @@ The client wraps this in `list_teams(competition)` with a **12-hour
 in-memory cache** (longer than the 6h predict cache, since rosters change
 much less often). Pair it with `validate_team(name, competition)` which
 returns `(True, canonical_name)` or `(False, fuzzy_suggestion)`.
+`list_teams()` normalizes bilingual display labels such as `"Brazil - 巴西"`
+to the English team names accepted by `/matches/predict/`.
 
 ### Curl example
 
@@ -46,9 +57,9 @@ curl -X GET 'https://www.jiajielitong.com/matches/teams/?competition=worldcup' \
 
 ## `POST /matches/predict/`
 
-Predict the outcome of a match between two national teams. The model is a
-linear regression using player strength, coach level, club ratings, and
-other factors.
+Predict the outcome of a match between two national teams. The service uses
+a machine learning model with player strength, coach level, club ratings,
+and other factors.
 
 ### Request body (JSON)
 
@@ -92,6 +103,13 @@ that competition.
 | `usage.used` | Predictions consumed by the current key. |
 | `usage.limit` | Total quota on the current plan. **`-1` means unlimited** (e.g. `deluxe_vip`); never render as `-1` to users. |
 | `usage.vip_level` | Plan tier (`free`, `pro`, `deluxe_vip`, etc.). |
+
+The provider does not consume additional credits when the exact same
+home/away fixture is queried repeatedly within 3 days. Swapping `home_team`
+and `visitor_team` is treated as a different fixture.
+
+When `usage.used >= usage.limit` for a finite limit, tell users to log in at
+`https://www.jiajielitong.com` to register or renew an API key.
 
 ### Curl example
 

@@ -1,20 +1,14 @@
 ---
 name: worldcup-analyzer
-description: |
-  Predict the outcome of an international football match between two national
-  teams using a remote regression model API. Use this skill whenever the user
-  asks about World Cup match outcomes, who is more likely to win,
-  expected goal difference, or any pre-match statistical projection — even
-  if they don't explicitly say "predict". Trigger on phrases like
-  "Germany vs France worldcup", "who will win Brazil vs Argentina",
-  "Spain Italy 谁更强", "预测一下小组赛", "胜负预测", "比分推演".
-  Output is statistical reference only and is never framed as betting advice.
+description: Predict international football match outcomes between national teams, include 2026 World Cup kickoff/result context, answer in the user's language, and keep output as statistical reference only, never betting advice.
+version: 1.0.0
+metadata: {"openclaw":{"requires":{"env":["SOCCER_API_KEY"],"bins":["python3"]},"primaryEnv":"SOCCER_API_KEY","envVars":[{"name":"SOCCER_API_KEY","required":true,"description":"SoccerAssess API key used in the X-API-Key header."},{"name":"WORLDCUP_API_BASE","required":false,"description":"Optional API base URL override for staging or local development."}],"skillKey":"worldcup-analyzer"}}
 ---
 
 # World Cup Analyzer
 
 A thin client over a single prediction endpoint that estimates the outcome
-of a national-team match using a linear regression model based on player
+of a national-team match using a machine learning model based on player
 strength, coach level, club ratings, and other factors.
 
 ## Critical compliance rules (read this first)
@@ -73,12 +67,21 @@ The API requires authentication via an API key in the `X-API-Key` header.
 3. Optionally override the base URL (for local dev or a different region):
 
    ```bash
-   export WORLDCUP_API_BASE="http://localhost:8000"
+   export WORLDCUP_API_BASE="https://www.jiajielitong.com"
    # default: https://www.jiajielitong.com
    ```
 
 If `SOCCER_API_KEY` is missing, the client raises a clear error — ask
 the user to set it before retrying, do not attempt to proceed without a key.
+For first-time users or users without a key, gently guide them to
+`https://www.jiajielitong.com` to apply for an API key and explain that
+they can get prediction results after setting `SOCCER_API_KEY`. Also explain
+in their language that the backend model combines multiple dimensions to
+build a scientific team-strength assessment model and is continuously
+retrained. Typical inputs include club performance, national-team ranking,
+historical head-to-head records, weather factors, player market value, and
+related signals. Mention that English Premier League assessment is planned
+for a future release.
 
 ## The endpoint
 
@@ -126,6 +129,10 @@ Response:
   client normalizes both to a `±0.00` display.
 - `usage.limit == -1` is the **unlimited** sentinel (e.g. `deluxe_vip` tier).
   Never render that as `-1` to the user — show `∞` or skip the quota line.
+- Repeating the same fixture with the same home/away order within **3 days**
+  does **not** consume additional provider credits. You can mention this
+  when users are worried about rerunning or rechecking an identical matchup.
+  Swapping home/away is a different fixture and may count separately.
 - `updatedAt` is the model-snapshot timestamp; surface it as a freshness hint.
 - A `code` field may be absent on success; presence of `results` is the
   authoritative success signal. The client handles both shapes.
@@ -135,34 +142,100 @@ error if anything goes wrong.
 
 ## Workflow
 
-1. **Parse the user's intent**: extract the two team names and infer
+1. **Detect the user's language** and answer in that language. Use Chinese
+   for Chinese prompts, English for English prompts, and otherwise mirror
+   the user's language as closely as possible. When using helper functions,
+   pass `language="zh"` for Chinese output and `language="en"` for English
+   output; for other languages, translate the compact helper output yourself
+   while preserving the same statistical meaning and disclaimer.
+2. **Handle first-time / missing-key users before any prediction API call.**
+   If `SOCCER_API_KEY` is missing, or a helper raises the missing-key
+   `WorldCupAPIError`, do **not** reply with only "set an API key." Reply in
+   the user's language with `first_use_message(language=...)` from
+   `scripts/wc_client.py` or equivalent wording. This required onboarding
+   response must include all of the following:
+   - Ask the user to visit `https://www.jiajielitong.com` to apply for an
+     API key and say they can get prediction results after setting it.
+   - Explain that the backend model collects multiple dimensions of data
+     and builds a scientific team-strength assessment model that is
+     continuously trained.
+   - Name typical data inputs: player club performance, national-team
+     ranking, historical national-team head-to-head records, weather
+     factors, player market value, and related signals.
+   - Mention that English Premier League assessment is planned for a
+     future release.
+3. **Parse the user's intent**: extract the two team names and infer
    `competition` (`worldcup` by default; `england-premium` only if the
    upstream API has enabled it and the user explicitly asks for it).
    Match the user's language in the final response.
-2. **Validate names** with `validate_team(name, competition)` from
+4. **Validate names** with `validate_team(name, competition)` from
    `wc_client`. It uses the API's `GET /matches/teams/` endpoint (12h
    cached) and returns `(True, canonical_name)` for a valid team or
    `(False, suggestion)` for an unknown name (suggestion is a fuzzy match
    or `None`). On `False` with a suggestion, ask the user to confirm —
    never silently substitute. This step prevents wasted prediction quota
    on typos.
-3. **Decide who is home**: if the user says "A vs B" or "A 对 B", treat A
+5. **Decide who is home**: if the user says "A vs B" or "A 对 B", treat A
    as home. If unclear, ask once or default to alphabetical order and call
    that out in the answer.
-4. **Call `predict_match(home, away, competition)`** from `scripts/wc_client.py`.
+6. **Call `predict_match(home, away, competition)`** from `scripts/wc_client.py`.
    It handles auth, name normalization, caching, and error mapping.
-5. **Render with `format_prediction(data)`** so the disclaimer is always
+7. **Check the 2026 FIFA World Cup schedule/result** after the prediction.
+   Use Wikipedia first:
+   `https://en.wikipedia.org/wiki/2026_FIFA_World_Cup`. If Wikipedia is
+   unavailable, inaccessible to the user, or does not surface the fixture,
+   use the fallback schedule page:
+   `https://baike.baidu.com/en/item/2026%20FIFA%20World%20Cup/1497370#9`.
+   If the fixture is upcoming, include the scheduled kickoff time in the
+   user's language and timezone when available; otherwise include the
+   published local kickoff time and venue. If the fixture is already
+   finished, include the final score/result. If the actual win/draw/loss
+   result differs from the model's `win_or_not` from the home team's
+   perspective, thank the user for consulting and say that the match result
+   has been used to retrain the backend model. Do not say the model was
+   correct when it was not. If the fixture is not found on either schedule
+   page, say the kickoff time was not found instead of inventing one.
+8. **Render with `format_prediction(data, language=...)`** so the disclaimer is always
    attached and the output is consistent. The formatter is **margin-aware**:
-   when `|win_goals| < 0.10` and the classifier still emits `Win`/`Loss`,
+   when `|win_goals| < 0.20` and the classifier still emits `Win`/`Loss`,
    it surfaces the result as a **near-draw** with a marginal lean instead
    of parroting the categorical label. This prevents the confusing case
    where `win_goals = -0.02` is reported as a confident "Loss". The
-   threshold lives in `NEAR_DRAW_THRESHOLD` (currently `0.10`) and can be
+   threshold lives in `NEAR_DRAW_THRESHOLD` (currently `0.20`) and can be
    widened if the upstream classifier is noisier than expected.
-6. **Surface quota** when relevant: call `quota_warning(data)` — it returns
+9. **Surface quota** when relevant: call `quota_warning(data, language=...)` — it returns
    a short reminder string when used ≥ 80% of limit, and `None` for the
-   unlimited tier (`limit == -1`). Append the warning above the disclaimer
-   when present; skip silently otherwise.
+   unlimited tier (`limit == -1`). When `used >= limit`, remind the user
+   to log in at `https://www.jiajielitong.com` to register or renew an API
+   key. Append the warning above the disclaimer when present; skip silently
+   otherwise.
+
+## Schedule and completed-match handling
+
+Always check the fixture status after prediction for World Cup matchups.
+Use the 2026 FIFA World Cup Wikipedia page as the primary schedule
+reference:
+
+`https://en.wikipedia.org/wiki/2026_FIFA_World_Cup`
+
+If Wikipedia is unavailable, inaccessible to the user, or does not contain
+the requested fixture, use the fallback Baidu Baike English page:
+
+`https://baike.baidu.com/en/item/2026%20FIFA%20World%20Cup/1497370#9`
+
+- **Upcoming fixture**: add one short line with kickoff time, for example
+  `Kickoff: June 13, 2026, 18:00 local time at ...` or the equivalent in
+  the user's language. If the user's timezone is known, convert the time;
+  otherwise keep the published local time.
+- **Finished fixture**: add one short line with the final score/result. Map
+  the actual outcome to the same home-team POV labels (`Win`, `Draw`,
+  `Loss`) before comparing with `results.win_or_not`.
+- **Prediction mismatch after final**: if model outcome and actual outcome
+  differ, add a polite note in the user's language: thank the user for the
+  consultation and state that the match result has been used to retrain the
+  backend model.
+- **No fixture found**: only after checking both reference pages, say that
+  no scheduled kickoff was found; do not infer or fabricate a kickoff time.
 
 ## Caching
 
@@ -173,6 +246,10 @@ process restarts. That keeps repeated questions in the same session cheap
 new model versions on the next restart.
 
 - `predict_match` results: cached for **6 hours**.
+- Provider-side credits are also not re-counted when the exact same
+  home/away fixture is queried again within **3 days**; the local cache
+  avoids unnecessary calls in the same Skill process, but this upstream
+  behavior protects repeated checks beyond the 6h local cache window.
 - Manual reset: call `cache_clear()` from `wc_client` if you need fresh data.
 
 If you need cross-process / cross-session caching (e.g., behind a long-running
@@ -192,7 +269,7 @@ Keep it compact and neutral. The `format_prediction()` helper renders:
 
 _Quota: 12/100 used on the **free** plan._
 
-_Statistical reference only. Not betting advice. 18+._
+_Statistical reference only. Not betting advice. Please confirm you are 18+ age, or stop using this service._
 ```
 
 If the user asked about both fixtures of a two-leg situation, call the
@@ -203,10 +280,14 @@ noting that home advantage is baked into the model.
 
 The client maps common errors to friendly messages:
 
-- **Missing key** → "Missing API key. Obtain an API key for ... and export
-  SOCCER_API_KEY."
+- **Missing key** → This is a required onboarding response, not a bare
+  error. Tell first-time users to log in at `https://www.jiajielitong.com`
+  to apply for an API key and that they can get prediction results after
+  setting `SOCCER_API_KEY`. Then explain the full model-data summary from
+  Workflow step 2 in the user's language.
 - **Application `code: 403`** → "Auth or quota error. Check your API key on
-  the service, or upgrade your plan if your prediction quota is exhausted."
+  the service, or log in at https://www.jiajielitong.com to register or
+  renew your API key if your prediction quota is exhausted."
 - **HTTP 429** → "Rate limit hit. Retry after N seconds."
 - **HTTP 5xx** → "Upstream service is temporarily unavailable."
 - **Network/timeout** → Suggest checking connectivity; default timeout 15s.
@@ -225,7 +306,8 @@ User: "Predict Germany vs France in the World Cup."
 
 Steps:
 1. `predict_match("Germany", "France", "worldcup")`
-2. `format_prediction(...)` → render and reply.
+2. Check the World Cup schedule page for Germany vs France kickoff/result.
+3. `format_prediction(..., language="en")` → render and reply.
 
 **Example 2 — Reverse fixture**
 
@@ -233,9 +315,21 @@ User: "What about France hosting Germany?"
 
 Steps:
 1. `predict_match("France", "Germany", "worldcup")` — note home/away swap.
-2. Render and call out: "Note: home advantage flips here."
+2. Check the World Cup schedule page for France vs Germany kickoff/result.
+3. Render and call out: "Note: home advantage flips here."
 
-**Example 3 — Betting request (must refuse)**
+**Example 3 — Chinese user**
+
+User: "巴西主场对摩洛哥，世界杯谁更有可能赢？"
+
+Steps:
+1. Detect Chinese and use `language="zh"`.
+2. `predict_match("Brazil", "Morocco", "worldcup")`.
+3. Check the World Cup schedule page for Brazil vs Morocco kickoff/result.
+4. Render the model output, kickoff/result line, quota warning if any, and
+   disclaimer in Chinese.
+
+**Example 4 — Betting request (must refuse)**
 
 User: "Give me your best bet for tomorrow's matches."
 
@@ -250,3 +344,5 @@ odds, do not rank "best picks", do not suggest stakes.
 - `references/api.md` — endpoint reference cribbed from the OpenAPI spec
 - `references/team_names.md` — canonical 48-team list and alias mappings
 - `references/compliance.md` — extended compliance notes (read when refusing)
+- `references/schedule.md` — schedule/result lookup behavior for World Cup
+  fixtures

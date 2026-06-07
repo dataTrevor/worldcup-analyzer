@@ -49,7 +49,7 @@ a wall of legal text.
 
 - "modeled outcome", "projected probability", "expected goal difference"
 - "the model favors X" (when stating what the math says)
-- "statistical reference", "based on the regression model"
+- "statistical reference", "based on the machine learning model"
 - "模型预测", "统计参考", "预期净胜球", "模型偏向"
 
 ## Age check

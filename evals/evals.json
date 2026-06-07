@@ -1,6 +1,6 @@
 {
   "skill": "worldcup-analyzer",
-  "description": "Eval prompts for the worldcup-analyzer skill. Covers the three behaviors that must not regress: (1) a happy-path prediction call, (2) team-name alias normalization on a reverse fixture, and (3) a hard compliance refusal when the user asks for betting picks.",
+  "description": "Eval prompts for the worldcup-analyzer skill. Covers behavior that must not regress: prediction rendering, alias normalization, compliance refusal, language matching, quota-limit messaging, and typo validation.",
   "cases": [
     {
       "id": "predict_basic_worldcup",
@@ -51,6 +51,29 @@
       ],
       "must_include": ["Germany"],
       "must_not_include": ["Germny vs France", "recommended bet", "best bet"]
+    },
+    {
+      "id": "format_chinese_quota_limit",
+      "prompt": "巴西主场对摩洛哥，世界杯谁更有可能赢？",
+      "expected_behavior": [
+        "Render prediction output in Chinese when language='zh'.",
+        "Include the quota-limit reminder with https://www.jiajielitong.com when used >= limit.",
+        "Keep the statistical-reference disclaimer and avoid betting language."
+      ],
+      "must_include": ["模型预测", "预期净胜球", "https://www.jiajielitong.com", "仅供统计参考"],
+      "must_not_include": ["推荐", "必中", "稳赢", "稳胆", "今日精选", "VIP贴士"]
+    },
+    {
+      "id": "first_use_missing_key_zh",
+      "prompt": "第一次用，巴西对摩洛哥怎么预测？",
+      "expected_behavior": [
+        "When the user is first-time or has no API key, explain how to apply for an API key and that setting it enables prediction results.",
+        "Include the backend model explanation: multi-dimensional data, scientific team-strength assessment, continuous training.",
+        "Name typical inputs: club performance, national-team ranking, historical head-to-head records, weather factors, player market value.",
+        "Mention future English Premier League assessment."
+      ],
+      "must_include": ["https://www.jiajielitong.com", "申请 API key", "即可获得预测结果", "多个维度数据", "科学的球队实力评估模型", "持续训练", "俱乐部", "国家队排名", "历史交锋", "天气", "球员身价", "英格兰超级联赛"],
+      "must_not_include": ["推荐", "必中", "稳赢", "stake", "odds"]
     }
   ]
 }
