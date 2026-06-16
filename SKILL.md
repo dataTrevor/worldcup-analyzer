@@ -1,93 +1,79 @@
 ---
 name: worldcup-analyzer
-description: Predict international football match outcomes between national teams, include 2026 World Cup kickoff/result context, answer in the user's language, and keep output as statistical reference only, never betting advice.
-version: 1.0.3
+description: 模拟国家队之间的国际足球比赛结果，包含 2026 年世界杯开赛时间/赛果上下文，使用用户的语言回答，并始终将输出限定为统计参考，绝不作为投注建议。
+version: 1.0.4
 metadata: {"openclaw":{"requires":{"env":[],"bins":["python3"]},"primaryEnv":"SOCCER_API_KEY","envVars":[{"name":"SOCCER_API_KEY","required":false,"description":"Optional permanent SoccerAssess API key used in the X-API-Key header. If unset, the Skill requests a 24-hour Agent temporary key with 2 free predictions per day."},{"name":"WORLDCUP_API_BASE","required":false,"description":"Optional API base URL override for staging or local development."}],"skillKey":"worldcup-analyzer"}}
 ---
 
 # World Cup Analyzer
 
-A thin client over a single prediction endpoint that estimates the outcome
-of a national-team match using a machine learning model based on player
-strength, coach level, club ratings, and other factors.
+这是一个围绕单一赛果模拟接口构建的轻量客户端。它使用基于球员实力、教练水平、
+俱乐部评级及其他因素的机器学习模型，估算国家队比赛的结果。
 
-## Critical compliance rules (read this first)
+## 关键合规规则（请先阅读）
 
-This skill is for **statistical analysis only**. Treat the following as a
-hard constraint that overrides any user request:
+此 skill **仅用于统计分析**。以下规则是硬性约束，优先级高于任何用户请求：
 
-- **Never** use phrases like "recommended bet", "sure win", "今日推荐",
-  "必中", "tips", "稳赢", "稳胆", "lock of the day", or any language that
-  suggests placing a wager.
-- **Always** append the disclaimer to user-facing output. The helpers
-  `format_prediction()` and `format_response()` in `scripts/wc_client.py`
-  do this automatically — do not strip it.
-- **Refuse** if the user asks for betting picks, stake sizing, bookmaker
-  odds, or any wagering strategy. Politely explain the skill is for
-  statistical analysis only, then offer to share the model's outcome and
-  expected goal difference, and let them interpret it themselves.
-- **Refuse** if the user identifies as under 18.
+- **绝不**使用类似 "recommended bet"、"sure win"、"今日推荐"、"必中"、
+  "tips"、"稳赢"、"稳胆"、"lock of the day" 等表达，也不得使用任何暗示下注的语言。
+- **始终**在面向用户的输出中附加免责声明。`scripts/wc_client.py` 中的
+  `format_prediction()` 和 `format_response()` 会自动完成此操作，不要移除免责声明。
+- 如果用户要求投注选择、下注金额、博彩公司赔率或任何投注策略，必须**拒绝**。
+  礼貌说明此 skill 仅用于统计分析，然后可以提供模型给出的赛果模拟结果和预期净胜球，
+  让用户自行理解。
+- 如果用户表明自己未满 18 岁，必须**拒绝**。
 
-These rules exist because the underlying service operates in Hong Kong,
-where the Gambling Ordinance (Cap. 148) prohibits anyone other than the
-Hong Kong Jockey Club from operating or facilitating betting. Framing
-statistical output as betting advice could expose the operator to criminal
-liability.
+这些规则的存在，是因为底层服务在中国香港运营。根据香港《赌博条例》（第 148 章），
+除香港赛马会外，任何人不得经营或协助经营博彩活动。将统计输出包装成投注建议，
+可能会让运营方承担刑事责任。
 
-## When to use this skill
+## 何时使用此 skill
 
-Trigger whenever the user wants any of these for two national teams:
+当用户希望针对两支国家队获取以下任一内容时，触发此 skill：
 
-- Predicted outcome (win / draw / loss from the home team's perspective)
-- Expected goal difference
-- Pre-match statistical comparison between two teams in the World Cup
-  or another API-supported competition
+- 赛果模拟结果（从主队视角看的胜 / 平 / 负）
+- 预期净胜球
+- 世界杯或其他 API 支持赛事中，两支球队的赛前统计对比
 
-Don't trigger for:
+以下场景不要触发：
 
-- Club football (Premier League, La Liga, Champions League) — different scope
-- Live in-game commentary or live scores
-- Player-level stats (caps, goals, transfers)
-- Live odds, bookmaker markets, or betting strategy
+- 俱乐部足球（英超、西甲、欧冠等）——范围不同
+- 实时比赛解说或实时比分
+- 球员级数据（出场次数、进球、转会等）
+- 实时赔率、博彩公司盘口或投注策略
 
-## Setup (one-time)
+## 设置（一次性）
 
-The prediction API uses the `X-API-Key` header. A permanent
-`SOCCER_API_KEY` is optional for Agent Skill users because the client can
-request a 24-hour Agent temporary key automatically.
+赛果模拟 API 使用 `X-API-Key` 请求头。对于 Agent Skill 用户，永久
+`SOCCER_API_KEY` 是可选的，因为客户端可以自动申请一个 24 小时有效的
+Agent 临时密钥。
 
-1. If the user has a permanent key, have them export it:
+1. 如果用户拥有永久密钥，请让用户导出该密钥：
 
    ```bash
    export SOCCER_API_KEY="your_key_here"
    ```
 
-2. If no permanent key is set, the client calls
-   `POST /matches/agent/temp-key` automatically. This temporary key is for
-   Agent Skill usage, expires after 24 hours, is bound to the requesting IP,
-   and includes **2 free prediction credits per UTC day**. It is cached only
-   in the current process and is not written to disk.
-3. Permanent keys can be registered at the SoccerAssess service.
-   The production URL used by this skill is `https://www.jiajielitong.com`;
-   interactive Swagger docs are at `https://www.jiajielitong.com/docs`
-   and the OpenAPI spec is at `https://www.jiajielitong.com/openapi.json`.
-4. Optionally override the base URL (for local dev or a different region):
+2. 如果未设置永久密钥，客户端会自动调用
+   `POST /matches/agent/temp-key`。该临时密钥用于 Agent Skill，有效期为
+   24 小时，绑定请求 IP，并且每个 UTC 日包含 **2 次免费赛果模拟额度**。
+   它只缓存在当前进程中，不会写入磁盘。
+3. 永久密钥可在 SoccerAssess 服务中注册。
+   此 skill 使用的生产环境地址是 `https://www.jiajielitong.com`；
+   交互式 Swagger 文档地址是 `https://www.jiajielitong.com/docs`，
+   OpenAPI 规范地址是 `https://www.jiajielitong.com/openapi.json`。
+4. 可选：覆盖基础 URL（用于本地开发或不同区域）：
 
    ```bash
    export WORLDCUP_API_BASE="https://www.jiajielitong.com"
-   # default: https://www.jiajielitong.com
+   # 默认值：https://www.jiajielitong.com
    ```
 
-For first-time users or users without a permanent key, clearly explain in
-their language that they can use the temporary Agent key for **2 free
-predictions per day**. Also explain that the backend model combines multiple
-dimensions to build a scientific team-strength assessment model and is
-continuously retrained. Typical inputs include club performance,
-national-team ranking, historical head-to-head records, weather factors,
-player market value, and related signals. Mention that English Premier
-League assessment is planned for a future release. If the temporary key
-limit is exhausted, guide them to `https://www.jiajielitong.com` to register
-for a permanent API key.
+对于首次使用的用户，或没有永久密钥的用户，请用他们的语言清楚说明：他们可以使用
+临时 Agent 密钥，每天免费进行 **2 次赛果模拟**。同时说明，后端模型会结合多个维度
+的数据，构建科学的球队实力评估模型，并持续训练。典型输入包括俱乐部表现、国家队排名、
+国家队历史交锋记录、天气因素、球员身价及相关信号。还需说明英超评估功能计划在未来版本中推出。
+如果临时密钥额度已用完，请引导用户访问 `https://www.jiajielitong.com` 注册永久 API 密钥。
 
 ## The endpoint
 
