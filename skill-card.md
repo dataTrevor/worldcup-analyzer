@@ -11,9 +11,14 @@ model and present the result as statistical reference only.
 - Adds 2026 FIFA World Cup kickoff or final-result context when available.
 - Uses Wikipedia as the primary schedule source and Baidu Baike as fallback.
 - Warns when API usage reaches plan limits.
-- Supports automatic Agent temporary keys: 2 free predictions per day.
+- Supports automatic Agent temporary keys: 1 free prediction per day.
 - Repeated queries for the same home/away fixture within 3 days do not
   consume additional credits.
+- Notes that the temporary quota was reduced because training and inference
+  costs remain under sustained high load, and points users to the website for
+  plan and quota details.
+- Mentions website matchup intelligence: squad market value, average age,
+  FIFA ranking, and player counts across major league tiers.
 
 ## Requirements
 

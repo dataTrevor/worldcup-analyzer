@@ -42,15 +42,19 @@ python3 evals/run_evals.py
 No permanent key? Agent Skill users can still try the prediction endpoint:
 the client automatically requests a 24-hour Agent temporary key from
 `POST /matches/agent/temp-key`. Each source IP can request one temp key per
-UTC day, with 2 free prediction credits. Repeating the exact same home/away
+UTC day, with 1 free prediction credit. Due to sustained high training and
+inference costs, the temporary quota has been reduced to 1 per day; upgrade
+your Plan to support system operations, or visit `https://www.jiajielitong.com`
+for the latest quota and plan information. Repeating the exact same home/away
 fixture within 3 days does not consume additional credits. When the temp-key
-limit is reached, register a permanent API key at `https://www.jiajielitong.com`.
+limit is reached, register a permanent API key or upgrade your Plan at
+`https://www.jiajielitong.com`.
 
 ## What the client gives you
 
 | Function | Purpose |
 |---|---|
-| `request_agent_temp_key()` | Requests a 24-hour Agent temporary key with 2 free prediction credits per day; cached in process only. |
+| `request_agent_temp_key()` | Requests a 24-hour Agent temporary key with 1 free prediction credit per day; cached in process only. |
 | `predict_match(home, away, competition="worldcup")` | Outcome + expected goal diff. Uses `SOCCER_API_KEY` when set, otherwise an Agent temporary key. 6h in-memory TTL cache. |
 | `list_teams(competition="worldcup")` | Canonical team list from `GET /matches/teams/`. 12h TTL cache. |
 | `validate_team(name, competition)` | `(True, canonical)` or `(False, fuzzy_suggestion)`. Cheap — uses cached team list. |
@@ -58,7 +62,7 @@ limit is reached, register a permanent API key at `https://www.jiajielitong.com`
 | `format_response(body)` | Appends disclaimer to any custom string. |
 | `format_prediction(data, language="zh")` | Optional Chinese rendering for Chinese user prompts. |
 | `format_response(body, language="zh")` | Optional Chinese disclaimer. |
-| `first_use_message(language="zh")` | First-use onboarding text that explains the 2-per-day free temp key, repeat-query credits behavior, and model-data summary. |
+| `first_use_message(language="zh")` | First-use onboarding text that explains the 1-per-day free temp key, repeat-query credits behavior, quota downgrade reason, plan upgrade prompt, matchup intelligence, and model-data summary. |
 | `quota_warning(data, language="zh")` | Returns a short heads-up at ≥ 80% quota; points temp-key/plan-exhausted users to `https://www.jiajielitong.com` for a permanent key; `None` on unlimited (`limit == -1`) tier. |
 | `canonicalize_team_name(name)` | Alias map only (no API call). |
 | `cache_clear()` | Reset both predict + teams caches. |

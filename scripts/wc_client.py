@@ -41,21 +41,34 @@ AGENT_TEMP_KEY_PATH = "/matches/agent/temp-key"
 TEMP_KEY_CACHE_KEY = "agent_temp_key"
 TEMP_KEY_SAFETY_MARGIN = 60
 FIRST_USE_MODEL_NOTE_EN = (
-    "First time using this skill? You can try 2 predictions per day for free "
-    "with an Agent temporary key. The backend model combines multiple data "
+    "First time using this skill? You can try 1 prediction per day for free "
+    "with an Agent temporary key. Because training and inference costs remain "
+    "under sustained high load, the temporary free quota has been reduced to "
+    "1 per day. Please consider upgrading your Plan to support system "
+    f"operations, or visit {ACCOUNT_URL} for the latest quota and plan "
+    "information. The backend model combines multiple data "
     "dimensions to build a scientific team-strength assessment model and is "
     "continuously retrained. Typical inputs include club performance, national "
     "team rankings, historical head-to-head records, weather factors, player "
-    "market value, and related signals. English Premier League assessment is "
-    "planned for a future release."
+    "market value, and related signals. The website now also provides matchup "
+    "intelligence, including total squad market value, average age, FIFA "
+    "ranking, and player counts in the big five European leagues, Tier2 "
+    "leagues, MLS, and the Mexican league. MLS and Mexican league counts are "
+    "tracked separately because of host-country context. English Premier "
+    "League assessment is planned for a future release."
 )
 FIRST_USE_MODEL_NOTE_ZH = (
-    "首次使用本 Skill？Agent 临时 key 每日可免费试用 2 次预测。"
+    "首次使用本 Skill？Agent 临时 key 每日可免费试用 1 次赛果模拟。"
+    "由于训练和推理成本持续处于高负荷，临时额度已降级为每日 1 次，"
+    "敬请升级 Plan 以资系统运营；也可以访问网站获取最新额度和套餐信息。"
     "后台模型收集多个维度数据，建立科学的球队实力评估模型，"
     "并持续训练。典型数据包括球员在俱乐部的表现、国家队排名、国家队历史交锋记录、"
-    "天气因素、球员身价等。后续也会推出英格兰超级联赛的评估。"
+    "天气因素、球员身价等。网站现已上线对阵情报，支持查询展示球队总身价、"
+    "平均年龄、世界足联排名，并统计球队效力于五大联赛、次顶级（Tier2）联赛、"
+    "美职联和墨西哥联赛的球员数量（美职联和墨西哥联赛因东道主因素单独统计）。"
+    "后续也会推出英格兰超级联赛的评估。"
 )
-SUPPORTED_COMPETITIONS = ("worldcup", "england-premium")
+SUPPORTED_COMPETITIONS = ("worldcup", "euro")
 
 # Cache TTL in seconds. Predictions are deterministic for given inputs over
 # short windows, so 6h is a good default — long enough to dedup repeat
@@ -115,7 +128,7 @@ def cache_clear() -> None:
 def request_agent_temp_key(force: bool = False) -> dict:
     """Request or reuse a 24-hour Agent temporary API key.
 
-    The API grants 2 free prediction credits per UTC day for Agent Skill
+    The API grants 1 free prediction credit per UTC day for Agent Skill
     usage. The returned key is cached only in this Python process and is
     never persisted to disk.
     """
@@ -493,16 +506,19 @@ def first_use_message(language: str = "en") -> str:
     if _is_zh(language):
         return (
             "未设置永久 API key 时，本 Skill 会自动申请 Agent 临时 key；"
-            "每日可免费试用 2 次预测。同一组主客场参赛队在 3 天内重复查询不消耗 credits。"
-            f"临时 key 额度用完后，请登录 {ACCOUNT_URL} 注册获得永久 API key。\n\n"
+            "每日可免费试用 1 次赛果模拟。同一组主客场参赛队在 3 天内重复查询不消耗 credits。"
+            "由于训练和推理成本持续处于高负荷，临时额度已降级为每日 1 次；"
+            f"临时 key 额度用完后，请登录 {ACCOUNT_URL} 注册获得永久 API key 或升级 Plan。\n\n"
             f"{FIRST_USE_MODEL_NOTE_ZH}"
         )
     return (
         "If no permanent API key is set, this skill automatically requests "
-        "an Agent temporary key with 2 free predictions per day. Repeating "
+        "an Agent temporary key with 1 free prediction per day. Repeating "
         "the same home/away fixture within 3 days does not consume credits. "
+        "Because training and inference costs remain under sustained high "
+        "load, the temporary quota has been reduced to 1 per day. "
         f"After the temporary-key limit is reached, log in at {ACCOUNT_URL} "
-        "to register a permanent API key.\n\n"
+        "to register a permanent API key or upgrade your Plan.\n\n"
         f"{FIRST_USE_MODEL_NOTE_EN}"
     )
 
@@ -603,9 +619,19 @@ def format_prediction(data: dict, language: str = "en") -> str:
                 body += f"_Quota limit reached. Log in at {ACCOUNT_URL} to register a permanent API key._\n"
     if data.get("agent_temp_key") and not _permanent_api_key_configured():
         if zh:
-            body += "_Agent 临时 key 每日可免费试用 2 次预测；同一组主客场参赛队 3 天内重复查询不消耗 credits。_\n"
+            body += (
+                "_Agent 临时 key 每日可免费试用 1 次赛果模拟；同一组主客场参赛队 "
+                "3 天内重复查询不消耗 credits。由于训练和推理成本持续处于高负荷，"
+                f"临时额度已降级为每日 1 次；可访问 {ACCOUNT_URL} 获取最新信息或升级 Plan。_\n"
+            )
         else:
-            body += "_Agent temporary key: 2 free predictions per day; repeating the same home/away fixture within 3 days does not consume credits._\n"
+            body += (
+                "_Agent temporary key: 1 free prediction per day; repeating "
+                "the same home/away fixture within 3 days does not consume "
+                "credits. Because training and inference costs remain under "
+                f"sustained high load, visit {ACCOUNT_URL} for the latest "
+                "information or upgrade your Plan._\n"
+            )
     return format_response(body, language=language)
 
 
@@ -641,25 +667,26 @@ def quota_warning(data: dict, threshold: float = 0.8, language: str = "en") -> O
         if _is_zh(language):
             return (
                 f"提醒：你已用完 **{tier}** 计划的 {used}/{limit} 次预测。"
-                f"请登录 {ACCOUNT_URL} 注册获得永久 API key。"
+                f"请登录 {ACCOUNT_URL} 注册获得永久 API key、升级 Plan，或查看最新额度信息。"
             )
         return (
             f"Heads up: you've used all {used}/{limit} predictions on the "
             f"**{tier}** plan. Log in at {ACCOUNT_URL} to register a "
-            "permanent API key."
+            "permanent API key, upgrade your Plan, or check the latest quota "
+            "information."
         )
     if used / limit >= threshold:
         if _is_zh(language):
             return (
                 f"提醒：你已使用 **{tier}** 计划的 {used}/{limit} 次预测"
                 f"（{used / limit:.0%}）。接近上限时，请登录 {ACCOUNT_URL} "
-                "注册获得永久 API key。"
+                "注册获得永久 API key、升级 Plan，或查看最新额度信息。"
             )
         return (
             f"Heads up: you've used {used}/{limit} predictions on the "
             f"**{tier}** plan ({used / limit:.0%}). Log in at "
-            f"{ACCOUNT_URL} to register a permanent API key before you hit "
-            "the cap."
+            f"{ACCOUNT_URL} to register a permanent API key, upgrade your "
+            "Plan, or check the latest quota information before you hit the cap."
         )
     return None
 

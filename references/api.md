@@ -26,9 +26,9 @@ API key required.
     "api_key": "agent_tmp_...",
     "key_type": "agent_temp",
     "expires_in": 86400,
-    "limit": 2,
+    "limit": 1,
     "used": 0,
-    "remaining": 2,
+    "remaining": 1,
     "auth_header": "X-API-Key"
   }
 }
@@ -38,14 +38,18 @@ API key required.
 |---|---|
 | `data.api_key` | Temporary key to send as `X-API-Key` for `/matches/predict/`. |
 | `data.expires_in` | Seconds until expiry; currently 86400. |
-| `data.limit` | Free prediction credits for the temporary key; currently 2. |
+| `data.limit` | Free prediction credits for the temporary key; currently 1. |
 | `data.remaining` | Remaining temporary-key prediction credits. |
 
 Rules:
 - Each source IP can request one Agent temporary key per UTC day.
 - The temporary key expires after 24 hours and is bound to the requesting IP.
+- Due to sustained high training and inference costs, the temporary quota has
+  been reduced to 1 free prediction credit per day. Tell users they can visit
+  `https://www.jiajielitong.com` for the latest quota and plan information,
+  and upgrade their Plan to support system operations.
 - When the temporary-key limit is reached, tell users to register a permanent
-  API key at `https://www.jiajielitong.com`.
+  API key or upgrade their Plan at `https://www.jiajielitong.com`.
 
 ### Curl example
 

@@ -68,14 +68,16 @@
       "prompt": "第一次用，巴西对摩洛哥怎么预测？",
       "expected_behavior": [
         "When the user is first-time or has no permanent API key, explain the Agent temporary key free trial.",
-        "Say users can try 2 predictions per day for free.",
+        "Say users can try 1 prediction per day for free.",
+        "Explain that the temporary quota was reduced to 1 per day because training and inference costs remain under sustained high load, and invite users to upgrade Plan or visit the website for information.",
         "Say repeated queries for the same home/away fixture within 3 days do not consume credits.",
         "Tell users to register a permanent API key after the temp-key limit is reached.",
         "Include the backend model explanation: multi-dimensional data, scientific team-strength assessment, continuous training.",
         "Name typical inputs: club performance, national-team ranking, historical head-to-head records, weather factors, player market value.",
+        "Mention website matchup intelligence: total squad market value, average age, FIFA ranking, and player counts in big five leagues, Tier2 leagues, MLS, and the Mexican league.",
         "Mention future English Premier League assessment."
       ],
-      "must_include": ["https://www.jiajielitong.com", "临时 key", "每日可免费试用 2 次", "3 天内重复查询不消耗 credits", "永久 API key", "多个维度数据", "科学的球队实力评估模型", "持续训练", "俱乐部", "国家队排名", "历史交锋", "天气", "球员身价", "英格兰超级联赛"],
+      "must_include": ["https://www.jiajielitong.com", "临时 key", "每日可免费试用 1 次", "训练和推理成本", "升级 Plan", "3 天内重复查询不消耗 credits", "永久 API key", "多个维度数据", "科学的球队实力评估模型", "持续训练", "俱乐部", "国家队排名", "历史交锋", "天气", "球员身价", "对阵情报", "总身价", "平均年龄", "世界足联排名", "五大联赛", "Tier2", "美职联", "墨西哥联赛", "英格兰超级联赛"],
       "must_not_include": ["推荐", "必中", "稳赢", "stake", "odds"]
     }
   ]
