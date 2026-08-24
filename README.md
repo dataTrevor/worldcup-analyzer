@@ -1,6 +1,6 @@
 # worldcup-analyzer
 
-[![ClawHub](https://img.shields.io/badge/ClawHub-worldcup--analyzer-blue)](https://clawhub.ai/datatrevor/worldcup-analyzer)
+[![ClawHub](https://img.shields.io/badge/ClawHub-worldcup--analyzer-blue)](https://clawhub.ai/datatrevor/skills/worldcup-analyzer)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-green)
 ![License](https://img.shields.io/badge/license-MIT--0-lightgrey)
 
@@ -66,7 +66,7 @@ renew a permanent API key at `https://www.jiajielitong.com`.
 
 ## Demo
 
-ClawHub page: `https://clawhub.ai/datatrevor/worldcup-analyzer`
+ClawHub page: `https://clawhub.ai/datatrevor/skills/worldcup-analyzer`
 
 English EPL prompt:
 
@@ -124,6 +124,11 @@ for kickoff/final-result context.
 See `references/compliance.md` for full text and refusal templates.
 
 ## Changelog
+
+### 1.1.1
+
+Republished EPL-first version to refresh the ClawHub latest tag and update
+the marketplace listing to the current EPL-first description.
 
 ### 1.1.0
 

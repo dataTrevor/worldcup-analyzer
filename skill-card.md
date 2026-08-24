@@ -41,6 +41,11 @@ advice, stakes, bookmaker odds, or wagering strategy.
 
 ## Changelog
 
+### 1.1.1
+
+Republished EPL-first version to refresh the ClawHub latest tag and update
+the marketplace listing to the current EPL-first description.
+
 ### 1.1.0
 
 English: Added EPL-first support through `/matches/epl/simulate/` and

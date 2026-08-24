@@ -1,7 +1,7 @@
 ---
 name: worldcup-analyzer
 description: Predict English Premier League football match outcomes first, keep World Cup national-team support for compatibility, include schedule/result context, answer in the user's language, and keep output as statistical reference only, never betting advice.
-version: 1.1.0
+version: 1.1.1
 metadata: {"openclaw":{"requires":{"env":[],"bins":["python3"]},"primaryEnv":"SOCCER_API_KEY","envVars":[{"name":"SOCCER_API_KEY","required":false,"description":"Optional permanent SoccerAssess API key used in the X-API-Key header. If unset, the Skill requests a 24-hour Agent temporary key with 2 free simulation queries per day."},{"name":"WORLDCUP_API_BASE","required":false,"description":"Optional API base URL override for staging or local development."}],"skillKey":"worldcup-analyzer"}}
 ---
 
