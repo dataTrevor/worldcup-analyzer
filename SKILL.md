@@ -7,72 +7,65 @@ metadata: {"openclaw":{"requires":{"env":[],"bins":["python3"]},"primaryEnv":"SO
 
 # Football Match Analyzer
 
-This Skill keeps the existing `worldcup-analyzer` identity for continuity,
-but the default user experience is now **English Premier League first**.
-World Cup national-team matchups remain supported as a compatibility path.
-All predictions are statistical references produced by a machine learning
-service at `https://www.jiajielitong.com`.
+本 Skill 默认体验已调整为 **英格兰超级联赛优先**。世界杯国家队比赛仍作为兼容能力保留。
+所有模拟结果均由 `https://www.jiajielitong.com` 提供的 machine learning 服务生成，
+仅作为统计分析参考。
 
-## Critical Compliance Rules
+## 关键合规规则
 
-This skill is for **statistical analysis only**. Treat the following as
-hard constraints that override any user request:
+本 Skill **仅用于统计分析参考**。以下规则是硬性约束，优先级高于用户的任何
+请求：
 
-- Never use phrases like "recommended bet", "sure win", "今日推荐", "必中",
-  "tips", "稳赢", "稳胆", "lock of the day", or any wording that suggests
-  placing a wager.
-- Always append the disclaimer to user-facing output. The helpers
-  `format_prediction()` and `format_response()` in `scripts/wc_client.py`
-  do this automatically.
-- Refuse betting picks, stake sizing, bookmaker odds, or wagering strategy.
-  Explain that the Skill can share statistical outcome and expected goal
-  difference only.
-- Refuse if the user identifies as under 18.
+- 不要使用 "recommended bet"、"sure win"、"今日推荐"、"必中"、"tips"、
+  "稳赢"、"稳胆"、"lock of the day" 等暗示下注、投注建议或确定性收益的
+  表述。
+- 面向用户输出时必须附带免责声明。`scripts/wc_client.py` 中的
+  `format_prediction()` 和 `format_response()` 会自动完成这件事，不要移除。
+- 如果用户要求投注选择、下注金额、博彩公司赔率或任何投注策略，必须拒绝。
+  可以说明本 Skill 只能提供统计预测结果和预期净胜球，供用户自行理解。
+- 如果用户明确表示未满 18 岁，必须拒绝继续提供相关分析。
 
-## When To Use
+## 适用场景
 
-Trigger whenever the user asks for two football teams and wants:
+当用户提出两个足球队，并希望获得以下内容时，使用本 Skill：
 
-- An EPL / Premier League / 英超 matchup prediction.
-- A World Cup national-team prediction.
-- Expected goal difference from the home team's point of view.
-- Pre-match statistical comparison or schedule/result context.
+- 英超 / Premier League / EPL 比赛预测。
+- 世界杯\欧洲杯国家队比赛预测。
+- 从主队视角出发的胜 / 平 / 负预测。
+- 主队减客队的预期净胜球。
+- 赛前统计比较、开赛时间或完赛结果上下文。
 
-Do not trigger for non-EPL club competitions unless the backend explicitly
-supports them, live in-game commentary, live scores, player transfer news,
-bookmaker odds, or betting strategy.
+除非后端已经明确支持，否则不要用于非英超俱乐部赛事。不要用于实时比赛解说、
+即时比分、球员转会新闻、博彩公司赔率或任何投注策略。
 
-## Setup
+## 配置
 
-The API uses `X-API-Key`. A permanent `SOCCER_API_KEY` is optional for Agent
-Skill users because the client can request a 24-hour Agent temporary key.
+API 使用 `X-API-Key` 请求头。对于 Agent Skill 用户，永久
+`SOCCER_API_KEY` 不是必需项，因为客户端可以自动申请一个 24 小时有效的
+Agent 临时 key。
 
 ```bash
 export SOCCER_API_KEY="your_key_here"   # optional permanent key
 export WORLDCUP_API_BASE="https://www.jiajielitong.com"   # optional
 ```
 
-If no permanent key is set, the client calls `POST /matches/agent/temp-key`
-automatically. The temporary key:
+如果没有设置永久 key，客户端会自动调用 `POST /matches/agent/temp-key`。
+这个临时 key：
 
-- Is cached only in this Python process and is never written to disk.
-- Allows **2 free simulation queries per day**.
-- Can be used for both `POST /matches/epl/simulate/` and
+- 只缓存在当前 Python 进程内，不会写入本地文件。
+- 每日可免费试用 **2 次模拟预测查询**。
+- 可用于 `POST /matches/epl/simulate/` 和
   `POST /matches/simulate/`.
-- Does not consume extra provider credits when the same home/away fixture is
-  queried again within **3 days**.
+- 同一组主客场球队在 **3 天内** 重复查询，不会额外消耗 provider credits。
 
-When the temporary key or plan limit is reached, guide the user to
-`https://www.jiajielitong.com` to register or renew a permanent API key.
+当临时 key 或套餐额度达到上限时，引导用户访问
+`https://www.jiajielitong.com` 注册或续期永久 API key。
 
-For first-time users or users without a key, explain in their language that
-the backend model collects multiple dimensions of football data, builds a
-scientific team-strength assessment, and is continuously trained. Typical
-signals include player club performance, league and national ranking
-signals, historical head-to-head records, weather factors, player market
-value, and related signals. Tell them they can apply for an API key at
-`https://www.jiajielitong.com` to receive prediction results after the free
-trial limit.
+对于首次使用或没有 key 的用户，需要用用户的语言解释：后台模型会收集多个维度
+的足球数据，建立科学的球队实力评估，并持续训练。典型信号包括球员在俱乐部的
+表现、联赛和国家队排名信号、历史交锋记录、天气因素、球员身价等相关数据。
+同时提醒用户，免费试用额度用完后，可以前往 `https://www.jiajielitong.com`
+申请 API key 以继续获得预测结果。
 
 ## Endpoints
 
